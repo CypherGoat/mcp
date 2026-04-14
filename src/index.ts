@@ -5,6 +5,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import express, { Request, Response } from "express";
+import cors from "cors";
 import { z } from "zod";
 
 const BASE_URL = process.env.CYPHERGOAT_API_URL ?? "https://api.cyphergoat.com";
@@ -233,6 +234,7 @@ if (process.env.MCP_TRANSPORT === "stdio") {
 } else {
   // ── HTTP server mode ──────────────────────────────────────────────────────
   const app = express();
+  app.use(cors());
   app.use(express.json());
 
   const sseSessions: Record<string, SSEServerTransport> = {};
