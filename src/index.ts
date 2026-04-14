@@ -9,7 +9,7 @@ import { z } from "zod";
 
 const BASE_URL = process.env.CYPHERGOAT_API_URL ?? "https://api.cyphergoat.com";
 const API_KEY = process.env.CYPHERGOAT_API_KEY ?? "";
-const PORT = parseInt(process.env.PORT ?? "3000", 10);
+const PORT = parseInt(process.env.PORT ?? "4242", 10);
 
 async function apiRequest(
   path: string,
@@ -220,10 +220,10 @@ function createMcpServer(): McpServer {
 }
 
 // ── Transport selection ───────────────────────────────────────────────────────
-// When stdin is not a TTY (i.e. launched by Claude Code / an MCP host), use
-// stdio transport.  Otherwise start the HTTP server for manual / remote use.
+// Set MCP_TRANSPORT=stdio to use stdio (for Claude Code / CLI hosts).
+// Default is HTTP server mode.
 
-if (!process.stdin.isTTY) {
+if (process.env.MCP_TRANSPORT === "stdio") {
   // ── Stdio mode (Claude Code, CLI hosts) ──────────────────────────────────
   (async () => {
     const server = createMcpServer();
