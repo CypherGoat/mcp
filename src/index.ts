@@ -7,6 +7,79 @@ import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import express, { Request, Response } from "express";
 import cors from "cors";
 import { z } from "zod";
+import coinsData from "../coins.json";
+
+// ── Coin / Network normalization ──────────────────────────────────────────────
+
+/** Maps lowercase name or ticker → canonical lowercase ticker */
+const coinAliasToTicker = new Map<string, string>();
+/** Maps lowercase network value or coin name (single-network) → canonical lowercase network */
+const networkAliasToNetwork = new Map<string, string>();
+/** Set of valid "ticker:network" pairs */
+const validPairs = new Set<string>();
+
+// Count networks per ticker to detect single-network coins
+const tickerNetworks = new Map<string, Set<string>>();
+for (const c of coinsData) {
+  const t = c.ticker.toLowerCase();
+  if (!tickerNetworks.has(t)) tickerNetworks.set(t, new Set());
+  tickerNetworks.get(t)!.add(c.network.toLowerCase());
+}
+
+for (const c of coinsData) {
+  const ticker = c.ticker.toLowerCase();
+  const name = c.name.toLowerCase();
+  const network = c.network.toLowerCase();
+
+  coinAliasToTicker.set(ticker, ticker);
+  coinAliasToTicker.set(name, ticker); // e.g. "monero" → "xmr"
+
+  networkAliasToNetwork.set(network, network);
+  // For single-network coins, also accept the coin name/ticker as a network alias
+  if (tickerNetworks.get(ticker)!.size === 1) {
+    networkAliasToNetwork.set(name, network);   // "monero" → "xmr"
+    networkAliasToNetwork.set(ticker, network);  // "xmr"   → "xmr"
+  }
+
+  validPairs.add(`${ticker}:${network}`);
+}
+
+function normalizeCoin(input: string): string {
+  return coinAliasToTicker.get(input.toLowerCase()) ?? input.toLowerCase();
+}
+
+function normalizeNetwork(input: string): string {
+  return networkAliasToNetwork.get(input.toLowerCase()) ?? input.toLowerCase();
+}
+
+/** Returns an error string if the pair is invalid, or null if OK. */
+function validatePair(coin: string, network: string, label: string): string | null {
+  const key = `${coin}:${network}`;
+  if (validPairs.has(key)) return null;
+
+  const validNets = [...tickerNetworks.get(coin) ?? []].sort();
+  if (validNets.length > 0) {
+    return (
+      `Invalid network "${network}" for ${label} coin "${coin}". ` +
+      `Supported networks for ${coin}: ${validNets.join(", ")}`
+    );
+  }
+
+  const allTickers = [...new Set(coinsData.map(c => c.ticker))].sort().join(", ");
+  return (
+    `Unknown ${label} coin "${coin}". ` +
+    `Supported tickers: ${allTickers}`
+  );
+}
+
+/** Normalize + validate a coin/network pair. Throws on error. */
+function resolvePair(coin: string, network: string, label: string): { coin: string; network: string } {
+  const c = normalizeCoin(coin);
+  const n = normalizeNetwork(network);
+  const err = validatePair(c, n, label);
+  if (err) throw new Error(err);
+  return { coin: c, network: n };
+}
 
 const BASE_URL = process.env.CYPHERGOAT_API_URL ?? "https://api.cyphergoat.com";
 const API_KEY = process.env.CYPHERGOAT_API_KEY ?? "";
@@ -75,7 +148,7 @@ function createMcpServer(): McpServer {
 
   server.tool(
     "get_estimate",
-    "Get swap rate estimates across all supported exchanges for a cryptocurrency pair and amount. Returns a ranked list of offers with receive amounts, KYC scores, and SafeRoute reliability scores.",
+    "Get swap rate estimates across all supported exchanges for a cryptocurrency pair and amount. Returns a ranked list of offers with receive amounts, KYC scores.",
     {
       coin1: z.string().describe("Source cryptocurrency ticker (e.g. 'btc', 'eth')"),
       coin2: z.string().describe("Destination cryptocurrency ticker (e.g. 'xmr', 'usdt')"),
@@ -85,12 +158,12 @@ function createMcpServer(): McpServer {
       best: z.boolean().optional().describe("Return only the single best estimate"),
     },
     async ({ coin1, coin2, amount, network1, network2, best }) => {
+      const p1 = resolvePair(coin1, network1, "source");
+      const p2 = resolvePair(coin2, network2, "destination");
       const data = await apiRequest("/estimate", "GET", {
-        coin1,
-        coin2,
+        coin1: p1.coin, network1: p1.network,
+        coin2: p2.coin, network2: p2.network,
         amount,
-        network1,
-        network2,
         ...(best !== undefined ? { best } : {}),
       });
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
@@ -112,12 +185,12 @@ function createMcpServer(): McpServer {
       affiliate: z.string().optional().describe("Affiliate referral code"),
     },
     async ({ coin1, coin2, amount, network1, network2, partner, address, estimateid, affiliate }) => {
+      const p1 = resolvePair(coin1, network1, "source");
+      const p2 = resolvePair(coin2, network2, "destination");
       const data = await apiRequest("/swap", "GET", {
-        coin1,
-        coin2,
+        coin1: p1.coin, network1: p1.network,
+        coin2: p2.coin, network2: p2.network,
         amount,
-        network1,
-        network2,
         partner,
         address,
         ...(estimateid ? { estimateid } : {}),
@@ -152,12 +225,12 @@ function createMcpServer(): McpServer {
       network2: z.string().describe("Network for merchant's receive coin"),
     },
     async ({ coin1, coin2, amount, network1, network2 }) => {
+      const p1 = resolvePair(coin1, network1, "source");
+      const p2 = resolvePair(coin2, network2, "destination");
       const data = await apiRequest("/payments/estimate", "GET", {
-        coin1,
-        coin2,
+        coin1: p1.coin, network1: p1.network,
+        coin2: p2.coin, network2: p2.network,
         amount,
-        network1,
-        network2,
       });
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
@@ -177,13 +250,13 @@ function createMcpServer(): McpServer {
       affiliate: z.string().optional().describe("Affiliate referral code"),
     },
     async ({ coin1, coin2, amount, partner, network1, network2, address, affiliate }) => {
+      const p1 = resolvePair(coin1, network1, "source");
+      const p2 = resolvePair(coin2, network2, "destination");
       const data = await apiRequest("/payments/create", "GET", {
-        coin1,
-        coin2,
+        coin1: p1.coin, network1: p1.network,
+        coin2: p2.coin, network2: p2.network,
         amount,
         partner,
-        network1,
-        network2,
         address,
         ...(affiliate ? { affiliate } : {}),
       });
@@ -204,12 +277,12 @@ function createMcpServer(): McpServer {
       affiliate: z.string().optional().describe("Affiliate referral code"),
     },
     async ({ coin1, coin2, amount, network1, network2, address, affiliate }) => {
+      const p1 = resolvePair(coin1, network1, "source");
+      const p2 = resolvePair(coin2, network2, "destination");
       const data = await apiRequest("/payments/quick", "GET", {
-        coin1,
-        coin2,
+        coin1: p1.coin, network1: p1.network,
+        coin2: p2.coin, network2: p2.network,
         amount,
-        network1,
-        network2,
         address,
         ...(affiliate ? { affiliate } : {}),
       });
