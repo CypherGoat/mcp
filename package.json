@@ -1,0 +1,27 @@
+{
+  "name": "cyphergoat-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for the CypherGoat cryptocurrency exchange aggregation API",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --outfile=dist/index.js --packages=external",
+    "start": "node dist/index.js",
+    "dev": "ts-node --transpile-only src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.10.0",
+    "express": "^4.21.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.28.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.0"
+  },
+  "bin": {
+    "cyphergoat-mcp": "dist/index.js"
+  }
+}
