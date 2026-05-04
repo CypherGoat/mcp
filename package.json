@@ -12,6 +12,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.10.0",
     "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
     "express": "^4.21.0",
     "zod": "^3.23.0"
   },
