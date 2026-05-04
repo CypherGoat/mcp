@@ -139,10 +139,16 @@ async function apiRequest(
 // Each connection gets its own McpServer instance.
 
 function createMcpServer(): McpServer {
-  const server = new McpServer({
-    name: "cyphergoat",
-    version: "1.0.0",
-  });
+  const server = new McpServer(
+    { name: "cyphergoat", version: "1.0.0" },
+    {
+      instructions:
+        "CypherGoat MCP server for cryptocurrency swap and payment tools. " +
+        "No API key is required — all tools are publicly accessible. " +
+        "Use get_estimate to compare rates, create_swap to execute a swap, " +
+        "and get_transaction to track a swap by its CGID.",
+    }
+  );
 
   // ── Swap / Estimate tools ───────────────────────────────────────────────────
 
